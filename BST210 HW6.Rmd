@@ -27,7 +27,24 @@ dt$sex.new[dt$sex==1] <- 0
 #####(a)
 For the model with age alone, calculate and graph the fitted probabilities for each category as a function of age. Briefly interpret your graph. Also, what is the estimated relative risk ratio and 95% CI for the effect of 10 years of age when comparing outcome 2 to outcome 1?  What is the estimated relative risk ratio and 95% CI for the effect of 10 years of age when comparing outcome 3 to outcome 1? A little harder: What is the relative risk ratio and 95% CI for the effect of 10 years of age when comparing outcome 3 to outcome 2?
 
+Interpretation of graph:
+Red line-outcome 1, the reference group
+The probability of not having any CHD during follow up period decreases as age increases.
+Blue line-outcome 2
+The probability of having CHD but remain alive during follow up period increases among younger, and decreases among elder people. One possible explaination is that, although older people are more likely to have CHD, they are also more likely to die because of CHD or other dieseases; thus, the propotion of people who have CHD but are still alive actually decreases. 
+Green line-outcome 3
+As age increases, the probability of death from any cause increases.
+The estimated relative risk ratio for the effect of 10 years of age when comparing outcome 2 to outcome 1 is 1.026^10 = 1.29. 
+CI: 1.013^10 = 1.14 to 1.039^10 = 1.47
+
+The estimated relative risk ratio for the effect of 10 years of age when comparing outcome 3 to outcome 1 is 1.124^10 = 3.22. 
+CI: 1.113^10 = 2.92 to 1.134^10 = 3.52
+
+The estimated relative risk ratio for the effect of 10 years of age when comparing outcome 3 to outcome 2 is 3.22/1.29 = 2.50. 
+CI: 2.50/1.014 = 2.47 to 2.50*1.014 = 2.54
 ```{r}
+dt$outcome = 1 + as.numeric(dt$anychd)
+dt$outcome = ifelse(dt$death == 1, 3, dt$outcome)
 mage = multinom(outcome~age, data = dt)
 summ.MNfit <- function(fit, digits=3){
   s <- summary(fit)
@@ -52,11 +69,20 @@ summ.MNfit <- function(fit, digits=3){
 
 summ.MNfit(mage)
 mage.fitted = fitted(mage)
-plot(na.omit(dt$age), mage.fitted[,1], type = "l", col = "red", 
-     ylim = c(0,1), ylab = "Probability of Outcome", xlab = "Age",
-     main = "Fitted Values, o1 = Red, o2 = Blue, o3 = Green")
-lines(na.omit(dt$age), mage.fitted[,2], type = "l", col = "blue")
-lines(na.omit(dt$age), mage.fitted[,3], type = "l", col = "green")
+o1 = subset((fitted(mage)),select = c(1))
+o2 = subset((fitted(mage)),select = c(2))
+o3 = subset((fitted(mage)),select = c(3))
+plot(dt$age, o1, col = "red", 
+     ylim = c(0,1), ylab = "Probability of Outcome1", xlab = "Age",
+     main = "Fitted Values")
+plot(dt$age,o2, col = "blue",ylab = "Probability of Outcome2", xlab = "Age",
+     main = "Fitted Values")
+plot(dt$age, o3, col = "green",ylab = "Probability of Outcome3", xlab = "Age",
+     main = "Fitted Values")
+
+```
+```{r}
+vcov(mage)
 
 
 ```
