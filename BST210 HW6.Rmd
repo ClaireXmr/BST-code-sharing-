@@ -1,0 +1,206 @@
+---
+title: "BST210 HW6"
+author: "Louise Yu"
+date: "10/31/2017"
+output:
+  html_document: 
+    theme: united
+    highlight: tango
+---
+```{r}
+library(foreign)
+library(MASS)
+library(nnet)
+library(splitstackshape)
+
+dat <- read.dta("/Users/hyu/Documents/Fall 2017/BST 210/Lab material/framingham.dta")
+dt <- subset(dat, prevchd != 1)
+
+#recode variables
+dt$outcome <- with(dt, ifelse(dt$death == 1,3,ifelse(dt$death == 0 &dt$anychd == 1,2,1)))
+dt$sex.new[dt$sex==2] <- 1
+dt$sex.new[dt$sex==1] <- 0
+```
+
+####Question 1
+
+#####(a)
+For the model with age alone, calculate and graph the fitted probabilities for each category as a function of age. Briefly interpret your graph. Also, what is the estimated relative risk ratio and 95% CI for the effect of 10 years of age when comparing outcome 2 to outcome 1?  What is the estimated relative risk ratio and 95% CI for the effect of 10 years of age when comparing outcome 3 to outcome 1? A little harder: What is the relative risk ratio and 95% CI for the effect of 10 years of age when comparing outcome 3 to outcome 2?
+
+```{r}
+mage = multinom(outcome~age, data = dt)
+summ.MNfit <- function(fit, digits=3){
+  s <- summary(fit)
+  for(i in 2:length(fit$lev))
+  {
+    ##
+    cat("\nLevel", fit$lev[i], "vs. Level", fit$lev[1], "\n")
+    ##
+    betaHat <- s$coefficients[(i-1),]
+    se <- s$standard.errors[(i-1),]
+    zStat <- betaHat / se
+    pval <- 2 * pnorm(abs(zStat), lower.tail=FALSE)
+    ##
+    RRR <- exp(betaHat)
+    RRR.lo <- exp(betaHat - qnorm(0.975)*se)
+    RRR.up <- exp(betaHat + qnorm(0.975)*se)
+    ##
+    results <- cbind(betaHat, se, pval, RRR, RRR.lo, RRR.up)
+    print(round(results, digits=digits))
+  }
+}
+
+summ.MNfit(mage)
+mage.fitted = fitted(mage)
+plot(na.omit(dt$age), mage.fitted[,1], type = "l", col = "red", 
+     ylim = c(0,1), ylab = "Probability of Outcome", xlab = "Age",
+     main = "Fitted Values, o1 = Red, o2 = Blue, o3 = Green")
+lines(na.omit(dt$age), mage.fitted[,2], type = "l", col = "blue")
+lines(na.omit(dt$age), mage.fitted[,3], type = "l", col = "green")
+
+
+```
+
+#####(b)
+
+For the model with sex alone, confirm that the fitted probabilities match those of an outcome × sex tabulation exactly. Also confirm that the estimated relative risk ratios for sex from your model match the relative risk ratios from the tabulation. Note that this would only occur with a “saturated model” like when you only have a single dichotomous predictor as here – this will not happen for continuous covariates, say. 
+
+* RRR comparing outcome 2 to outcome 1 from the tabulation
+0.46978022* 0.09876033/ (0.62603306*0.12362637) = 0.599
+RRR comparing outcome 3 to outcome 1 from the tabulation
+0.46978022*0.27520661/(0.62603306*0.40659341) = 0.508 
+
+
+```{r}
+msex = multinom(outcome~sex, data = dt)
+table(dt$outcome, dt$sex)
+prop.table(table(dt$outcome, dt$sex), margin = 2)
+fitted(msex)[dt$sex == 1,][1,]
+fitted(msex)[dt$sex == 2,][1,]
+summ.MNfit(msex)
+
+```
+
+
+
+#####(c)
+Use a LRT to decide between the models including both age and sex and the model including age, sex, and their interaction. What do you conclude? Are there any other models you might recommend fitting next?
+
+* The p-value of LRT is 0.028, smaller than 0.05. We can therefore reject our null hypothesis. The interaction between age and sex is statistically significant in predicting the probability of outcome. 
+
+
+```{r}
+m2 = multinom(outcome~sex+age, data = dt)
+m3 = multinom(outcome~sex+age+sex*age, data = dt)
+lrtMN <- function(fit1, fit2){
+  stat <- abs(deviance(fit1)-deviance(fit2))
+  residDF <- abs(fit1$edf-fit2$edf)
+  return(pchisq(stat, residDF, lower=FALSE))
+}
+
+lrtMN(m2, m3)
+
+```
+
+
+####Question 2
+
+#####(a)
+For the model with age alone, what is the estimated odds ratio and 95% CI for the effect of 10 years of age when comparing outcome 3 vs. outcome 1 and 2 (combined)?  Also, what is the estimated odds ratio and 95% CI for the effects of 10 years of age when comparing outcome 2 and 3 (combined) vs. outcome 1?
+
+* The estimated odds ratio for the effect of 10 years of age comparing outcome 3 vs. outcome 1 & 2 combined is 2.7, and the 95% CI for this estimated OR is (2.5, 2.92). Because by running ordinal logistic regression, we assume proportional odds assumption holds. Therefore, the estimated OR and 95% CI for the effects of 10 years of age comparing outcome 2 & 3 combined vs. outcome 1 are the same as in the first part of the question, OR = 2.7 and 95% CI is (2.5, 2.92). 
+
+```{r}
+ord.1 = polr(as.factor(outcome) ~ age, data = dt, Hess = TRUE)
+summary(ord.1)
+
+exp(10*coef(ord.1[1])) #OR
+exp(10*confint(ord.1)) #95% CI
+
+```
+
+
+#####(b)
+For the model with age alone, is the proportional odds assumption satisfied or rejected?  Let’s explore this further by these additional looks at the data: First, create a binary outcome variable that equals 1 when you are in category 3 and equals 0 when you are in category 1 or 2. Run a logistic regression model using age to predict this binary outcome. Second, create a new binary outcome variable that equals 1 when you are in category 2 or 3 and equals 0 when you are in category 1. Again, run a logistic regression model using age to predict this new binary outcome. If the proportional odds assumption holds, we would expect that the two beta coefficients for age in these two models would be close to each another. What happens in this example?  (Do the CI’s for the age beta coefficients overlap or not?)  Given this comparison of the beta coefficients, do you believe the proportional odds model assumption holds or not for the ordinal logistic regression model with age alone?
+
+<hr>
+
+
+* The coefficient for age in the first case is 0.11 (95% CI= 0.103 to 0.121), the coefficient for age in the second case is 0.09 (95% CI = 0.083 to 0.1). Because these two confidence intervals do not overlap, the two beta coefficients for age are not close enough to each other. Therefore, the proportional odds assumption does not hold in this ordinal logistic regression model. 
+
+```{r message=FALSE}
+dt$testdum1 <- with(dt, ifelse(dt$outcome == 3,1,0)) #category 3 vs category 1 and 2 combined 
+ord.test1 <- glm(testdum1 ~ age, family = binomial(), data = dt)    
+summary(ord.test1)
+
+dt$testdum2 <- with(dt, ifelse(dt$outcome == 1,0,1)) #category 1 vs category 2 and 3 combined 
+ord.test2 <- glm(testdum2 ~ age, family = binomial(), data = dt)
+summary(ord.test2)
+
+confint(ord.test1)
+confint(ord.test2)
+```
+
+#####(c)
+Now focus on the model with sex alone. Is the proportional odds assumption satisfied or rejected?  Let’s explore this further by these additional looks at the data:  Consider again the outcome × sex tabulation as above. With the ordinal model, we need to tabulate category 1 vs. 2 and 3 (combined) and category 1 and 2 (combined) vs. category 3. If the proportional odds assumption is satisfied, we should feel comfortable with a common odds ratio estimate for these two categorizations. What are the associated odds ratio estimates for sex to predict these categorizations based on hand calculations?  How do these compare with the ordinal logistic regression-based odds ratio estimate for sex?  Given your comparison of these odds ratio estimates, do you believe the proportional odds model assumption holds or not for the ordinal logistic regression model with sex alone?  (One could also perform the pair of logistic regressions as in 2 (b) with sex as the only predictor and compare the beta coefficients for sex in these two models. Try that if you like. ) Finally, is this ordinal logistic regression model saturated or not? Defend your answer.
+
+* The result shows that the beta coefficients for sex in two separate logistic regression models are close enough to each other, 95% CI = (-0.72, -0.46) vs. (-0.76, -0.51), which are overlapping. It suggests that the proportional odds assumption holds. 
+     + category 3 vs. category 1 and 2 combined: OR = P[category=3]/P[category=1 and 2] = exp(-0.59030) = 0.55
+     + category 1 vs. category 2 and 3 combined: OR = P[category=1]/P[category=2 and 3] = exp(-0.63626) = 0.53
+     + those two odds ratios with different ways of categorization are quite similar  
+     + Ordinal logistic regression OR estimate: OR = P[category=1]/P[category=2 and 3] = P[category=1 and 2]/P[category=3] = exp(-0.6183) = 0.54
+     + the odd ratio is quite similar to the two logistic regression ORs above. 
+* Together with the aforementioned evidence, we can assume that the proportional odds assumption holds in this ordinal logistic regression model. 
+* In the current model, we have 3 parameters (1, a2 and b1), which is not equal to the number of varying fitted probability (4)
+Also, as shown in the R output below, the fitted probabilites does not match exactly the observed probabilities in the data, and therefore the model is not saturated. 
+
+```{r message=FALSE}
+ord.test3 <- glm(testdum1 ~ sex.new, family = binomial(), data = dt)    
+summary(ord.test3)
+confint(ord.test3)
+exp(-0.59030)
+
+ord.test4 <- glm(testdum2 ~ sex.new, family = binomial(), data = dt)
+summary(ord.test4)
+confint(ord.test4)
+exp(-0.63626)
+
+ord.2 <- polr(as.factor(outcome) ~ sex.new, data = dt, Hess = TRUE)
+summary(ord.2)
+exp(coef(ord.2))
+
+with(dt, prop.table(table(sex.new, outcome), margin = 1)) #observed probability 
+head(predict(ord.2,type="p"),2) #fitted probability 
+
+```
+
+#####(d)
+Do we have any evidence that the age × sex interaction is needed for ordinal logistic regression modeling?  Why or why not?
+
+* The interaction term is not needed since the interaction term is not statistically significant. Therefore we don't have enough evidence to reject the null hypothesis that there is no interaction between age and sex in the 
+
+```{r}
+ord.3 <- polr(as.factor(outcome) ~ sex.new + age + sex.new*age, data = dt, Hess = TRUE)
+summary(ord.3)
+```
+
+#####(e)
+Finally, assess whether or not the proportional odds assumption holds for the model including both main effects of age and sex (but not their interaction). Based on the results of this analysis, what would be your recommendations for model choices if you wanted to include continuous age in the modeling? Would you recommend using ordinal or multinomial logistic regression?  Is there anything else you might recommend?
+
+* The beta coefficients for sex in two logistic regressions are very close to each other, with overlapping 95% CI: (-0.93, -0.64) vs. (-0.92, -0.65). However, the beta coefficients for age in two logistic regressions are not close enough to each other, with non-overlapping 95% CI: (0.11, 0.13) vs. (0.09, 0.10). Therefore, the proportional odds assumption is violated in this ordinal logistic regression that contains both sex and age. For that reason, it would be more appropriate to use multinomial logistic regression if we want to include continuous age in the modeling. We could also try generalized ordinal model. 
+
+```{r message=FALSE}
+ord.4 <- polr(as.factor(outcome) ~ sex.new + age, data = dt, Hess = TRUE) 
+summary(ord.4)
+
+ord.test5 <- glm(testdum1 ~ sex.new + age, family = binomial(), data = dt) #category 3 vs. category 1 and 2 combined
+summary(ord.test5)
+
+ord.test6 <- glm(testdum2 ~ sex.new + age, family = binomial(), data = dt) #category 1 vs. category 2 and 3 combined
+summary(ord.test6)
+
+confint(ord.test5)
+confint(ord.test6)
+```
+
+
