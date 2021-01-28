@@ -12,6 +12,7 @@ library(foreign)
 library(MASS)
 library(nnet)
 library(splitstackshape)
+add here
 
 dat <- read.dta("/Users/hyu/Documents/Fall 2017/BST 210/Lab material/framingham.dta")
 dt <- subset(dat, prevchd != 1)
